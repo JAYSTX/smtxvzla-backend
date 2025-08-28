@@ -1,0 +1,68 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum UserType {
+  NATURAL
+  MERCHANT
+  TEAM
+}
+
+enum KycStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum UserStatus {
+  ONLINE
+  OFFLINE
+}
+
+enum Asset {
+  USDT
+  USDC
+  SMTX
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  userId       String     @unique           // STX000001
+  nickname     String     @unique           // must start with '$'
+  email        String     @unique
+  phone        String
+  passwordHash String
+  type         UserType   @default(NATURAL)
+  kycStatus    KycStatus  @default(PENDING)
+  lastSeen     DateTime   @default(now())
+  status       UserStatus @default(ONLINE)
+  createdAt    DateTime   @default(now())
+
+  balances     Balance[]
+  wallets      UserWallet[]
+}
+
+model Balance {
+  id        Int    @id @default(autoincrement())
+  user      User   @relation(fields: [userId], references: [id])
+  userId    Int
+  asset     Asset
+  available Decimal @default(0) @db.Decimal(65, 30)
+  locked    Decimal @default(0) @db.Decimal(65, 30)
+
+  @@unique([userId, asset])
+}
+
+model UserWallet {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    Int
+  chain     String   @default("BSC")
+  address   String   @unique
+  createdAt DateTime @default(now())
+}
