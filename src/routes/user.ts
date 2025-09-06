@@ -1,14 +1,14 @@
-import { FastifyInstance } from 'fastify'
-import { PrismaClient } from '@prisma/client'
+import { FastifyInstance } from 'fastify';
+import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient();
 
 export async function userRoutes(app: FastifyInstance) {
-  app.addHook('onRequest', app.authenticate as any)
+  app.addHook('onRequest', app.authenticate);
 
   app.get('/', async (request: any) => {
-    const me = await prisma.user.findUnique({ where: { id: request.user.sub } })
-    const balances = await prisma.balance.findMany({ where: { userId: request.user.sub } })
+    const me = await prisma.user.findUnique({ where: { id: request.user.sub } });
+    const balances = await prisma.balance.findMany({ where: { userId: request.user.sub } });
     return {
       user: {
         userId: me?.userId,
@@ -18,7 +18,11 @@ export async function userRoutes(app: FastifyInstance) {
         type: me?.type,
         kycStatus: me?.kycStatus
       },
-      balances: balances.map(b => ({ asset: b.asset, available: b.available, locked: b.locked }))
-    }
-  })
+      balances: balances.map((b) => ({
+        asset: b.asset,
+        available: b.available,
+        locked: b.locked
+      }))
+    };
+  });
 }
