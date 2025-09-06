@@ -4,10 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
     "dev": "tsx src/server.ts",
     "prisma:generate": "prisma generate",
     "db:push": "prisma db push",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",
