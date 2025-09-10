@@ -4,12 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "prisma generate && tsc",
     "start": "node dist/src/server.js",
+    "prestart": "npm run db:push",
     "dev": "tsx src/server.ts",
     "prisma:generate": "prisma generate",
     "db:push": "prisma db push",
     "seed": "tsx prisma/seed.ts",
+    "postdeploy": "sh ./postdeploy.sh",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -25,6 +27,7 @@
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.14.10",
     "prisma": "^5.18.0",
     "tsx": "^4.19.2",
     "typescript": "^5.5.4"
