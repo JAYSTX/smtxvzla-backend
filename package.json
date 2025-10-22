@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "prisma generate && tsc",
-    "start": "node dist/src/server.js",
+    "start": "tsx src/server.ts",
     "prestart": "npm run db:push",
     "dev": "tsx src/server.ts",
     "prisma:generate": "prisma generate",
