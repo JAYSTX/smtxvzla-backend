@@ -3,15 +3,45 @@ import { FastifyInstance } from "fastify";
 import { createOrder, listOrders, acceptOrder, releaseOrder } from "../controllers/p2pController.js";
 
 export async function p2pRoutes(app: FastifyInstance) {
-  // Crear orden de compra/venta
-  app.post("/p2p/order", { preHandler: [app.authenticate] }, createOrder);
+  // ✅ Todas las rutas P2P quedan bajo /api/p2p/ gracias al prefix del server.ts
+
+  // Crear orden de compra o venta
+  app.post("/order", { preHandler: [app.authenticate] }, async (request, reply) => {
+    try {
+      await createOrder(request, reply);
+    } catch (error) {
+      app.log.error(error);
+      reply.code(500).send({ error: "Error al crear la orden" });
+    }
+  });
 
   // Listar todas las órdenes abiertas
-  app.get("/p2p/orders", listOrders);
+  app.get("/orders", async (_request, reply) => {
+    try {
+      await listOrders(_request, reply);
+    } catch (error) {
+      app.log.error(error);
+      reply.code(500).send({ error: "Error al obtener las órdenes" });
+    }
+  });
 
-  // Aceptar una orden
-  app.post("/p2p/order/:id/accept", { preHandler: [app.authenticate] }, acceptOrder);
+  // Aceptar una orden existente
+  app.post("/order/:id/accept", { preHandler: [app.authenticate] }, async (request, reply) => {
+    try {
+      await acceptOrder(request, reply);
+    } catch (error) {
+      app.log.error(error);
+      reply.code(500).send({ error: "Error al aceptar la orden" });
+    }
+  });
 
   // Liberar una orden completada
-  app.post("/p2p/order/:id/release", { preHandler: [app.authenticate] }, releaseOrder);
+  app.post("/order/:id/release", { preHandler: [app.authenticate] }, async (request, reply) => {
+    try {
+      await releaseOrder(request, reply);
+    } catch (error) {
+      app.log.error(error);
+      reply.code(500).send({ error: "Error al liberar la orden" });
+    }
+  });
 }
