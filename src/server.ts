@@ -35,7 +35,9 @@ app.get('/health', async () => ({ ok: true }));
 await app.register(authRoutes, { prefix: '/auth' });
 await app.register(userRoutes, { prefix: '/me' });
 await app.register(walletRoutes, { prefix: '/wallet' });
-await app.register(p2pRoutes, { prefix: '/p2p' }); // ✅ NUEVO BLOQUE P2P
+
+// ✅ Prefijo estándar REST para el módulo P2P
+await app.register(p2pRoutes, { prefix: '/api' });
 
 // Puerto
 const port = Number(process.env.PORT || 3000);
