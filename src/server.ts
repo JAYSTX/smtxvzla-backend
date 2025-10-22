@@ -5,11 +5,11 @@ import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
 import jwt from '@fastify/jwt';
 
-// rutas existentes
+// Rutas existentes
 import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/user.js';
 import { walletRoutes } from './routes/wallet.js';
-// nueva ruta
+// Nueva ruta P2P
 import { p2pRoutes } from './routes/p2p.js';
 
 const app = Fastify({ logger: true });
@@ -35,7 +35,7 @@ app.get('/health', async () => ({ ok: true }));
 await app.register(authRoutes, { prefix: '/auth' });
 await app.register(userRoutes, { prefix: '/me' });
 await app.register(walletRoutes, { prefix: '/wallet' });
-await app.register(p2pRoutes, { prefix: '/p2p' });
+await app.register(p2pRoutes, { prefix: '/p2p' }); // ✅ NUEVO BLOQUE P2P
 
 // Puerto
 const port = Number(process.env.PORT || 3000);
