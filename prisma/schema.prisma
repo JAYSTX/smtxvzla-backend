@@ -45,6 +45,7 @@ model User {
 
   balances     Balance[]
   wallets      UserWallet[]
+  orders       Order[]        // ✅ Relación con el nuevo modelo Order
 }
 
 model Balance {
@@ -65,4 +66,17 @@ model UserWallet {
   chain     String   @default("BSC")
   address   String   @unique
   createdAt DateTime @default(now())
+}
+
+model Order {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  takerId   Int?
+  type      String
+  amount    Float
+  price     Float
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id])
 }
