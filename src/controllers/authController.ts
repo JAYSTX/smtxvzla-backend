@@ -1,33 +1,23 @@
 // src/controllers/authController.ts
 import { prisma } from "../lib/prisma.js";
+import { Prisma } from "@prisma/client";
 import { FastifyRequest, FastifyReply } from "fastify";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
-import { Asset } from "@prisma/client";
 
-/**
- * Registrar un nuevo usuario con wallet y balances automáticos
- */
 export async function register(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const { nickname, email, phone, password } = request.body as {
-      nickname: string;
-      email: string;
-      phone: string;
-      password: string;
-    };
+    const { nickname, email, phone, password } = request.body as any;
 
     if (!nickname || !email || !phone || !password) {
       return reply.code(400).send({ error: "Todos los campos son obligatorios" });
     }
 
-    // Validar nickname
     if (!nickname.startsWith("$")) {
       return reply.code(400).send({ error: "El nickname debe comenzar con $" });
     }
 
-    // Verificar si ya existe el usuario
     const exists = await prisma.user.findFirst({
       where: { OR: [{ email }, { nickname }] },
     });
@@ -35,7 +25,6 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
       return reply.code(400).send({ error: "El usuario ya está registrado" });
     }
 
-    // Crear usuario base
     const hashed = await bcrypt.hash(password, 10);
     const user = await prisma.user.create({
       data: {
@@ -47,9 +36,9 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
       },
     });
 
-    // Crear wallet derivada en BSC
+    // Crear wallet automática (solo dirección pública)
     const wallet = ethers.Wallet.createRandom();
-    const newWallet = await prisma.userWallet.create({
+    await prisma.userWallet.create({
       data: {
         userId: user.id,
         chain: "BSC",
@@ -57,79 +46,64 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
       },
     });
 
-    // Crear balances iniciales usando enum Asset
-    const assets: Asset[] = [Asset.SMTX, Asset.USDT, Asset.USDC];
+    // Crear balances iniciales
+    const assets = ["SMTX", "USDT", "USDC"] as const;
     for (const asset of assets) {
       await prisma.balance.create({
         data: {
           userId: user.id,
-          asset,
-          available: new prisma.Prisma.Decimal(0),
-          locked: new prisma.Prisma.Decimal(0),
+          asset: asset as any,
+          available: new Prisma.Decimal(0),
+          locked: new Prisma.Decimal(0),
         },
       });
     }
 
-    // Crear token JWT
     const token = jwt.sign(
       { id: user.id, nickname: user.nickname },
-      process.env.JWT_SECRET ?? "devsecret",
+      process.env.JWT_SECRET as string,
       { expiresIn: "7d" }
     );
 
-    return reply.send({
+    reply.send({
       success: true,
       message: "Usuario registrado correctamente",
       user: {
         id: user.id,
-        userId: user.userId,
         nickname: user.nickname,
         email: user.email,
         phone: user.phone,
-        wallet: newWallet.address,
       },
-      balances: assets.map((a) => ({ asset: a, available: 0 })),
       token,
     });
   } catch (error) {
     console.error("Error al registrar usuario:", error);
-    return reply.code(500).send({ error: "Error interno al registrar usuario" });
+    reply.code(500).send({ error: "Error interno al registrar usuario" });
   }
 }
 
-/**
- * Iniciar sesión
- */
 export async function login(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const { email, password } = request.body as {
-      email: string;
-      password: string;
-    };
-
+    const { email, password } = request.body as any;
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return reply.code(404).send({ error: "Usuario no encontrado" });
-    }
+
+    if (!user) return reply.code(404).send({ error: "Usuario no encontrado" });
 
     const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) {
-      return reply.code(401).send({ error: "Credenciales inválidas" });
-    }
+    if (!valid) return reply.code(401).send({ error: "Credenciales inválidas" });
 
     const token = jwt.sign(
       { id: user.id, nickname: user.nickname },
-      process.env.JWT_SECRET ?? "devsecret",
+      process.env.JWT_SECRET as string,
       { expiresIn: "7d" }
     );
 
-    return reply.send({
+    reply.send({
       success: true,
       message: "Inicio de sesión exitoso",
       token,
       user: {
         id: user.id,
-        userId: user.userId,
         nickname: user.nickname,
         email: user.email,
         phone: user.phone,
@@ -137,14 +111,11 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
     });
   } catch (error) {
     console.error("Error en login:", error);
-    return reply.code(500).send({ error: "Error interno al iniciar sesión" });
+    reply.code(500).send({ error: "Error interno al iniciar sesión" });
   }
 }
 
-/**
- * Generar ID tipo STX000001
- */
-function generateUserId(): string {
+function generateUserId() {
   const random = Math.floor(100000 + Math.random() * 900000);
   return `STX${random}`;
 }
