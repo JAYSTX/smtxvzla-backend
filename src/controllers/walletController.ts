@@ -1,18 +1,13 @@
 // src/controllers/walletController.ts
 import { prisma } from "../lib/prisma.js";
+import { Prisma, Asset } from "@prisma/client";
 import { FastifyRequest, FastifyReply } from "fastify";
 import { ethers } from "ethers";
-import { Asset } from "@prisma/client";
 
-/**
- * Crear una wallet automáticamente para el usuario
- * (se ejecuta después del registro o manualmente vía endpoint)
- */
 export async function createWallet(request: FastifyRequest, reply: FastifyReply) {
   try {
     const user = (request as any).user;
 
-    // Verificar si ya tiene una wallet en BSC
     const existing = await prisma.userWallet.findFirst({
       where: { userId: user.id, chain: "BSC" },
     });
@@ -24,7 +19,6 @@ export async function createWallet(request: FastifyRequest, reply: FastifyReply)
       });
     }
 
-    // Generar nueva dirección en BSC (solo pública, sin guardar clave privada)
     const wallet = ethers.Wallet.createRandom();
     const newWallet = await prisma.userWallet.create({
       data: {
@@ -34,15 +28,14 @@ export async function createWallet(request: FastifyRequest, reply: FastifyReply)
       },
     });
 
-    // Crear balances iniciales usando enum Asset
     const assets: Asset[] = [Asset.SMTX, Asset.USDT, Asset.USDC];
     for (const asset of assets) {
       await prisma.balance.create({
         data: {
           userId: user.id,
           asset,
-          available: new prisma.Prisma.Decimal(0),
-          locked: new prisma.Prisma.Decimal(0),
+          available: new Prisma.Decimal(0),
+          locked: new Prisma.Decimal(0),
         },
       });
     }
@@ -55,15 +48,10 @@ export async function createWallet(request: FastifyRequest, reply: FastifyReply)
     });
   } catch (error) {
     console.error("Error al crear la wallet:", error);
-    return reply
-      .code(500)
-      .send({ error: "Error interno al crear la wallet" });
+    return reply.code(500).send({ error: "Error interno al crear la wallet" });
   }
 }
 
-/**
- * Obtener información de la wallet y balances del usuario
- */
 export async function getWalletInfo(request: FastifyRequest, reply: FastifyReply) {
   try {
     const user = (request as any).user;
@@ -91,21 +79,13 @@ export async function getWalletInfo(request: FastifyRequest, reply: FastifyReply
     });
   } catch (error) {
     console.error("Error al obtener la wallet:", error);
-    return reply
-      .code(500)
-      .send({ error: "Error interno al obtener la wallet" });
+    return reply.code(500).send({ error: "Error interno al obtener la wallet" });
   }
 }
 
-/**
- * Actualizar balance manualmente (solo para pruebas o administración)
- */
 export async function updateBalance(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const { asset, amount } = request.body as {
-      asset: Asset;
-      amount: number;
-    };
+    const { asset, amount } = request.body as { asset: Asset; amount: number };
     const user = (request as any).user;
 
     const validAssets: Asset[] = [Asset.SMTX, Asset.USDT, Asset.USDC];
@@ -115,7 +95,7 @@ export async function updateBalance(request: FastifyRequest, reply: FastifyReply
 
     const updated = await prisma.balance.updateMany({
       where: { userId: user.id, asset },
-      data: { available: new prisma.Prisma.Decimal(amount) },
+      data: { available: new Prisma.Decimal(amount) },
     });
 
     return reply.send({
@@ -125,8 +105,6 @@ export async function updateBalance(request: FastifyRequest, reply: FastifyReply
     });
   } catch (error) {
     console.error("Error al actualizar balance:", error);
-    return reply
-      .code(500)
-      .send({ error: "Error interno al actualizar balance" });
+    return reply.code(500).send({ error: "Error interno al actualizar balance" });
   }
 }
