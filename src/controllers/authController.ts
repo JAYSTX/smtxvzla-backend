@@ -38,7 +38,7 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
       },
     });
 
-    // Crear wallet en BSC
+    // Crear wallet BSC
     const wallet = ethers.Wallet.createRandom();
     await prisma.userWallet.create({
       data: {
@@ -48,7 +48,7 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
       },
     });
 
-    // Crear balances iniciales (SMTX, USDT, USDC)
+    // Crear balances iniciales
     const assets: Asset[] = [Asset.SMTX, Asset.USDT, Asset.USDC];
     for (const asset of assets) {
       await prisma.balance.create({
@@ -61,7 +61,7 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
       });
     }
 
-    // Generar token con Fastify JWT
+    // Token con Fastify JWT
     const token = request.server.jwt.sign(
       { id: user.id, nickname: user.nickname },
       { expiresIn: "7d" }
@@ -97,6 +97,7 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) return reply.code(401).send({ error: "Credenciales inválidas" });
 
+    // Token con Fastify JWT
     const token = request.server.jwt.sign(
       { id: user.id, nickname: user.nickname },
       { expiresIn: "7d" }
