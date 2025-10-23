@@ -1,13 +1,14 @@
-import { FastifyInstance } from 'fastify';
-import { z } from 'zod';
-import { ensureUserWalletBSC } from '../services/wallet.js';
+// src/routes/wallet.ts
+import { FastifyInstance } from "fastify";
+import { createWallet, getWalletInfo, updateBalance } from "../controllers/walletController.js";
 
 export async function walletRoutes(app: FastifyInstance) {
-  app.addHook('onRequest', app.authenticate);
+  // Generar wallet automáticamente
+  app.post("/wallet/create", { preHandler: [app.authenticate] }, createWallet);
 
-  app.get('/wallet/deposit-address', async (request: any) => {
-    const query = z.object({ asset: z.enum(['USDT', 'USDC', 'SMTX']) }).parse(request.query);
-    const address = await ensureUserWalletBSC(request.user.sub, request.user.userId);
-    return { chain: 'BSC', asset: query.asset, address };
-  });
+  // Obtener wallet y balances
+  app.get("/wallet/info", { preHandler: [app.authenticate] }, getWalletInfo);
+
+  // Actualizar balance manual (testing/admin)
+  app.post("/wallet/update", { preHandler: [app.authenticate] }, updateBalance);
 }
