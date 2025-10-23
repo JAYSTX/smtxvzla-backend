@@ -1,11 +1,13 @@
 // src/controllers/authController.ts
 import { prisma } from "../lib/prisma.js";
-import { Prisma } from "@prisma/client";
+import { Prisma, Asset } from "@prisma/client";
 import { FastifyRequest, FastifyReply } from "fastify";
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
 import { ethers } from "ethers";
 
+/**
+ * Registro de nuevo usuario con wallet y balances automáticos
+ */
 export async function register(request: FastifyRequest, reply: FastifyReply) {
   try {
     const { nickname, email, phone, password } = request.body as any;
@@ -36,7 +38,7 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
       },
     });
 
-    // Crear wallet automática (solo dirección pública)
+    // Crear wallet en BSC
     const wallet = ethers.Wallet.createRandom();
     await prisma.userWallet.create({
       data: {
@@ -46,22 +48,22 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
       },
     });
 
-    // Crear balances iniciales
-    const assets = ["SMTX", "USDT", "USDC"] as const;
+    // Crear balances iniciales (SMTX, USDT, USDC)
+    const assets: Asset[] = [Asset.SMTX, Asset.USDT, Asset.USDC];
     for (const asset of assets) {
       await prisma.balance.create({
         data: {
           userId: user.id,
-          asset: asset as any,
+          asset,
           available: new Prisma.Decimal(0),
           locked: new Prisma.Decimal(0),
         },
       });
     }
 
-    const token = jwt.sign(
+    // Generar token con Fastify JWT
+    const token = request.server.jwt.sign(
       { id: user.id, nickname: user.nickname },
-      process.env.JWT_SECRET as string,
       { expiresIn: "7d" }
     );
 
@@ -82,6 +84,9 @@ export async function register(request: FastifyRequest, reply: FastifyReply) {
   }
 }
 
+/**
+ * Inicio de sesión
+ */
 export async function login(request: FastifyRequest, reply: FastifyReply) {
   try {
     const { email, password } = request.body as any;
@@ -92,9 +97,8 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) return reply.code(401).send({ error: "Credenciales inválidas" });
 
-    const token = jwt.sign(
+    const token = request.server.jwt.sign(
       { id: user.id, nickname: user.nickname },
-      process.env.JWT_SECRET as string,
       { expiresIn: "7d" }
     );
 
@@ -115,6 +119,9 @@ export async function login(request: FastifyRequest, reply: FastifyReply) {
   }
 }
 
+/**
+ * Generar ID tipo STX000001
+ */
 function generateUserId() {
   const random = Math.floor(100000 + Math.random() * 900000);
   return `STX${random}`;
