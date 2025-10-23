@@ -82,10 +82,8 @@ model Order {
   user      User     @relation(fields: [userId], references: [id])
 }
 
-/**
- * Registro completo de todas las operaciones internas:
- * XPAY, bloqueos P2P, liberaciones, cancelaciones, etc.
- */
+// Registro completo de todas las operaciones internas:
+// XPAY, bloqueos P2P, liberaciones, cancelaciones, etc.
 model Transaction {
   id        Int      @id @default(autoincrement())
   userId    Int
