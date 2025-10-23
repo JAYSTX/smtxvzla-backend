@@ -2,6 +2,7 @@
 import { prisma } from "../lib/prisma.js";
 import { FastifyRequest, FastifyReply } from "fastify";
 import { ethers } from "ethers";
+import { Asset } from "@prisma/client";
 
 /**
  * Crear una wallet automáticamente para el usuario
@@ -11,16 +12,19 @@ export async function createWallet(request: FastifyRequest, reply: FastifyReply)
   try {
     const user = (request as any).user;
 
-    // Verificar si ya tiene wallet
+    // Verificar si ya tiene una wallet en BSC
     const existing = await prisma.userWallet.findFirst({
-      where: { userId: user.id },
+      where: { userId: user.id, chain: "BSC" },
     });
 
     if (existing) {
-      return reply.code(400).send({ error: "El usuario ya posee una wallet asociada" });
+      return reply.code(400).send({
+        success: false,
+        error: "El usuario ya posee una wallet asociada",
+      });
     }
 
-    // Generar nueva dirección en BSC (sin exponer clave privada)
+    // Generar nueva dirección en BSC (solo pública, sin guardar clave privada)
     const wallet = ethers.Wallet.createRandom();
     const newWallet = await prisma.userWallet.create({
       data: {
@@ -30,28 +34,30 @@ export async function createWallet(request: FastifyRequest, reply: FastifyReply)
       },
     });
 
-    // Crear balances iniciales (SMTX, USDT, USDC)
-    const tokens = ["SMTX", "USDT", "USDC"];
-    for (const asset of tokens) {
+    // Crear balances iniciales usando enum Asset
+    const assets: Asset[] = [Asset.SMTX, Asset.USDT, Asset.USDC];
+    for (const asset of assets) {
       await prisma.balance.create({
         data: {
           userId: user.id,
           asset,
-          available: 0,
-          locked: 0,
+          available: new prisma.Prisma.Decimal(0),
+          locked: new prisma.Prisma.Decimal(0),
         },
       });
     }
 
-    reply.send({
+    return reply.send({
       success: true,
       message: "Wallet generada correctamente",
       wallet: newWallet,
-      balances: tokens.map((t) => ({ asset: t, available: 0 })),
+      balances: assets.map((a) => ({ asset: a, available: 0 })),
     });
   } catch (error) {
     console.error("Error al crear la wallet:", error);
-    reply.code(500).send({ error: "Error interno al crear la wallet" });
+    return reply
+      .code(500)
+      .send({ error: "Error interno al crear la wallet" });
   }
 }
 
@@ -67,7 +73,10 @@ export async function getWalletInfo(request: FastifyRequest, reply: FastifyReply
     });
 
     if (!wallet) {
-      return reply.code(404).send({ error: "El usuario no posee una wallet" });
+      return reply.code(404).send({
+        success: false,
+        error: "El usuario no posee una wallet",
+      });
     }
 
     const balances = await prisma.balance.findMany({
@@ -75,10 +84,16 @@ export async function getWalletInfo(request: FastifyRequest, reply: FastifyReply
       select: { asset: true, available: true, locked: true },
     });
 
-    reply.send({ wallet, balances });
+    return reply.send({
+      success: true,
+      wallet,
+      balances,
+    });
   } catch (error) {
     console.error("Error al obtener la wallet:", error);
-    reply.code(500).send({ error: "Error interno al obtener la wallet" });
+    return reply
+      .code(500)
+      .send({ error: "Error interno al obtener la wallet" });
   }
 }
 
@@ -87,22 +102,31 @@ export async function getWalletInfo(request: FastifyRequest, reply: FastifyReply
  */
 export async function updateBalance(request: FastifyRequest, reply: FastifyReply) {
   try {
-    const { asset, amount } = request.body as any;
+    const { asset, amount } = request.body as {
+      asset: Asset;
+      amount: number;
+    };
     const user = (request as any).user;
 
-    const validAssets = ["SMTX", "USDT", "USDC"];
+    const validAssets: Asset[] = [Asset.SMTX, Asset.USDT, Asset.USDC];
     if (!validAssets.includes(asset)) {
       return reply.code(400).send({ error: "Token no soportado" });
     }
 
     const updated = await prisma.balance.updateMany({
       where: { userId: user.id, asset },
-      data: { available: parseFloat(amount) },
+      data: { available: new prisma.Prisma.Decimal(amount) },
     });
 
-    reply.send({ success: true, updated });
+    return reply.send({
+      success: true,
+      message: "Balance actualizado correctamente",
+      updated,
+    });
   } catch (error) {
     console.error("Error al actualizar balance:", error);
-    reply.code(500).send({ error: "Error interno al actualizar balance" });
+    return reply
+      .code(500)
+      .send({ error: "Error interno al actualizar balance" });
   }
 }
