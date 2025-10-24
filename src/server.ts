@@ -10,9 +10,10 @@ import { authRoutes } from './routes/auth.js';
 import { userRoutes } from './routes/user.js';
 import { walletRoutes } from './routes/wallet.js';
 import { p2pRoutes } from './routes/p2p.js';
-
-// ✅ Nueva ruta XPAY
 import { xpayRoutes } from './routes/xpay.js';
+
+// ✅ Nueva ruta del Marketplace P2P
+import { p2pMarketRoutes } from './routes/p2pMarket.js';
 
 const app = Fastify({ logger: true });
 
@@ -40,7 +41,8 @@ await app.register(walletRoutes, { prefix: '/wallet' });
 
 // ✅ Prefijo estándar REST para módulos principales
 await app.register(p2pRoutes, { prefix: '/api' });
-await app.register(xpayRoutes, { prefix: '/api' }); // ✅ Nueva ruta XPAY
+await app.register(xpayRoutes, { prefix: '/api' });
+await app.register(p2pMarketRoutes, { prefix: '/api' }); // ✅ Agregado Marketplace P2P
 
 // Puerto
 const port = Number(process.env.PORT || 3000);
