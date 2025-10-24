@@ -31,31 +31,31 @@ enum Asset {
 }
 
 model User {
-  id           Int        @id @default(autoincrement())
-  userId       String     @unique           // STX000001
-  nickname     String     @unique           // must start with '$'
-  email        String     @unique
+  id           Int            @id @default(autoincrement())
+  userId       String         @unique           // STX000001
+  nickname     String         @unique           // must start with '$'
+  email        String         @unique
   phone        String
   passwordHash String
-  type         UserType   @default(NATURAL)
-  kycStatus    KycStatus  @default(PENDING)
-  lastSeen     DateTime   @default(now())
-  status       UserStatus @default(ONLINE)
-  createdAt    DateTime   @default(now())
+  type         UserType       @default(NATURAL)
+  kycStatus    KycStatus      @default(PENDING)
+  lastSeen     DateTime       @default(now())
+  status       UserStatus     @default(ONLINE)
+  createdAt    DateTime       @default(now())
 
   balances     Balance[]
   wallets      UserWallet[]
-  orders       Order[]        
+  orders       Order[]
   transactions Transaction[]
 }
 
 model Balance {
-  id        Int    @id @default(autoincrement())
-  user      User   @relation(fields: [userId], references: [id])
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id])
   userId    Int
   asset     Asset
-  available Decimal @default(0) @db.Decimal(65, 30)
-  locked    Decimal @default(0) @db.Decimal(65, 30)
+  available Decimal  @default(0) @db.Decimal(65, 30)
+  locked    Decimal  @default(0) @db.Decimal(65, 30)
 
   @@unique([userId, asset])
 }
@@ -73,25 +73,29 @@ model Order {
   id        Int      @id @default(autoincrement())
   userId    Int
   takerId   Int?
+  asset     Asset     // ✅ agregado
   type      String
-  amount    Float
-  price     Float
-  status    String   @default("OPEN")
-  createdAt DateTime @default(now())
+  amount    Decimal    @db.Decimal(65, 30)
+  price     Decimal    @db.Decimal(65, 30)
+  status    String     @default("OPEN")
+  createdAt DateTime   @default(now())
 
-  user      User     @relation(fields: [userId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
+  taker     User?      @relation("TakerOrders", fields: [takerId], references: [id])
 }
 
-// Registro completo de todas las operaciones internas:
+// ✅ Registro completo de todas las operaciones internas:
 // XPAY, bloqueos P2P, liberaciones, cancelaciones, etc.
 model Transaction {
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  user      User     @relation(fields: [userId], references: [id])
-  type      String   // XPAY_SEND | XPAY_RECEIVE | P2P_LOCK | P2P_RELEASE | P2P_CANCEL
-  asset     Asset
-  amount    Decimal  @db.Decimal(65, 30)
-  fromNick  String
-  toNick    String
-  createdAt DateTime @default(now())
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  counterId   Int?
+  type        String   // XPAY_SEND | XPAY_RECEIVE | P2P_LOCK | P2P_RELEASE | P2P_CANCEL
+  asset       Asset
+  amount      Decimal   @db.Decimal(65, 30)
+  description String?   // ✅ agregado
+  status      String    @default("COMPLETED")
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id])
 }
