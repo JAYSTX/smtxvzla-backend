@@ -1,38 +1,37 @@
-// src/controllers/p2pMarketController.ts
 import { prisma } from "../lib/prisma.js";
 import { FastifyRequest, FastifyReply } from "fastify";
 import { Decimal } from "@prisma/client/runtime/library";
 
 /**
- * Crear una orden de compra o venta
+ * Crear orden P2P (compra o venta)
  */
-export async function createP2POrder(request: FastifyRequest, reply: FastifyReply) {
+export async function createOrder(request: FastifyRequest, reply: FastifyReply) {
   try {
     const user = (request as any).user;
     const { type, asset, amount, price } = request.body as any;
 
-    const validAssets = ["USDT", "USDC", "SMTX"];
-    if (!["BUY", "SELL"].includes(type) || !validAssets.includes(asset)) {
-      return reply.code(400).send({ error: "Tipo o token inválido" });
+    if (!["BUY", "SELL"].includes(type)) {
+      return reply.code(400).send({ error: "Tipo inválido" });
+    }
+    if (!["USDT", "USDC", "SMTX"].includes(asset)) {
+      return reply.code(400).send({ error: "Asset inválido" });
     }
 
-    const amountDec = new Decimal(amount);
-    const priceDec = new Decimal(price);
-
-    // Verificar fondos si es venta
+    // Verificar balance si es venta
     if (type === "SELL") {
       const balance = await prisma.balance.findFirst({
         where: { userId: user.id, asset },
       });
-      if (!balance || balance.available.lessThan(amountDec)) {
-        return reply.code(400).send({ error: "Saldo insuficiente" });
+      if (!balance || balance.available.lt(amount)) {
+        return reply.code(400).send({ error: "Fondos insuficientes" });
       }
+
       // Bloquear fondos
-      await prisma.balance.updateMany({
-        where: { userId: user.id, asset },
+      await prisma.balance.update({
+        where: { id: balance.id },
         data: {
-          available: balance.available.minus(amountDec),
-          locked: balance.locked.plus(amountDec),
+          available: balance.available.minus(amount),
+          locked: balance.locked.plus(amount),
         },
       });
     }
@@ -42,143 +41,182 @@ export async function createP2POrder(request: FastifyRequest, reply: FastifyRepl
         userId: user.id,
         type,
         asset,
-        amount: amountDec,
-        price: priceDec,
-        status: "OPEN",
+        amount: new Decimal(amount),
+        price: new Decimal(price),
+      },
+    });
+
+    // Registrar transacción
+    await prisma.transaction.create({
+      data: {
+        userId: user.id,
+        type: "P2P_CREATE",
+        asset,
+        amount: new Decimal(amount),
+        description: `Creación de orden ${type} ${asset}`,
       },
     });
 
     reply.send({ success: true, order });
   } catch (error) {
-    console.error("Error creando orden:", error);
-    reply.code(500).send({ error: "Error interno" });
+    console.error("❌ Error en createOrder:", error);
+    reply.code(500).send({ error: "Error interno al crear orden" });
   }
 }
 
 /**
  * Listar todas las órdenes abiertas
  */
-export async function listP2POrders(_req: FastifyRequest, reply: FastifyReply) {
-  const orders = await prisma.order.findMany({
-    where: { status: "OPEN" },
-    include: { user: { select: { nickname: true, userId: true } } },
-    orderBy: { createdAt: "desc" },
-  });
-  reply.send({ success: true, orders });
-}
-
-/**
- * Aceptar una orden
- */
-export async function acceptP2POrder(request: FastifyRequest, reply: FastifyReply) {
+export async function listOrders(_req: FastifyRequest, reply: FastifyReply) {
   try {
-    const user = (request as any).user;
-    const id = Number((request.params as any).id);
-
-    const order = await prisma.order.findUnique({ where: { id } });
-    if (!order) return reply.code(404).send({ error: "Orden no encontrada" });
-    if (order.userId === user.id)
-      return reply.code(400).send({ error: "No puedes aceptar tu propia orden" });
-    if (order.status !== "OPEN")
-      return reply.code(400).send({ error: "Orden no disponible" });
-
-    await prisma.order.update({
-      where: { id },
-      data: { status: "TAKEN", takerId: user.id },
+    const orders = await prisma.order.findMany({
+      where: { status: "OPEN" },
+      include: { user: { select: { nickname: true } } },
     });
-
-    reply.send({ success: true, message: "Orden aceptada correctamente" });
+    reply.send(orders);
   } catch (error) {
-    console.error("Error al aceptar orden:", error);
-    reply.code(500).send({ error: "Error interno" });
+    console.error("❌ Error en listOrders:", error);
+    reply.code(500).send({ error: "Error al listar órdenes" });
   }
 }
 
 /**
- * Liberar una orden completada (vendedor libera fondos)
+ * Aceptar una orden (bloquea fondos del comprador)
  */
-export async function releaseP2POrder(request: FastifyRequest, reply: FastifyReply) {
+export async function acceptOrder(request: FastifyRequest, reply: FastifyReply) {
   try {
     const user = (request as any).user;
     const id = Number((request.params as any).id);
 
     const order = await prisma.order.findUnique({ where: { id } });
-    if (!order || order.status !== "TAKEN")
-      return reply.code(400).send({ error: "Orden no válida o no tomada" });
+    if (!order || order.status !== "OPEN") {
+      return reply.code(400).send({ error: "Orden no disponible" });
+    }
 
-    // Solo el creador de la orden tipo SELL puede liberar
-    if (order.userId !== user.id || order.type !== "SELL")
-      return reply.code(403).send({ error: "No autorizado para liberar fondos" });
-
-    const amountDec = new Decimal(order.amount);
-
-    // Liberar fondos al comprador
-    await prisma.$transaction(async (tx) => {
-      await tx.balance.updateMany({
+    // Si el usuario acepta una orden de tipo BUY, él vende
+    if (order.type === "BUY") {
+      const balance = await prisma.balance.findFirst({
         where: { userId: user.id, asset: order.asset },
-        data: { locked: { decrement: amountDec } },
       });
-
-      const buyerBalance = await tx.balance.findFirst({
-        where: { userId: order.takerId!, asset: order.asset },
-      });
-
-      if (buyerBalance) {
-        await tx.balance.updateMany({
-          where: { userId: order.takerId!, asset: order.asset },
-          data: { available: { increment: amountDec } },
-        });
-      } else {
-        await tx.balance.create({
-          data: {
-            userId: order.takerId!,
-            asset: order.asset,
-            available: amountDec,
-            locked: 0,
-          },
-        });
+      if (!balance || balance.available.lt(order.amount)) {
+        return reply.code(400).send({ error: "Fondos insuficientes" });
       }
 
-      await tx.transaction.createMany({
-        data: [
-          {
-            userId: user.id,
-            type: "P2P_RELEASE",
-            asset: order.asset,
-            amount: amountDec,
-            description: `Liberación de orden #${order.id}`,
-          },
-          {
-            userId: order.takerId!,
-            type: "P2P_RECEIVE",
-            asset: order.asset,
-            amount: amountDec,
-            description: `Recibido por orden #${order.id}`,
-          },
-        ],
+      await prisma.balance.update({
+        where: { id: balance.id },
+        data: {
+          available: balance.available.minus(order.amount),
+          locked: balance.locked.plus(order.amount),
+        },
       });
+    }
 
-      await tx.order.update({
-        where: { id },
-        data: { status: "COMPLETED" },
-      });
+    const updated = await prisma.order.update({
+      where: { id },
+      data: { takerId: user.id, status: "TAKEN" },
     });
 
-    reply.send({ success: true, message: "Fondos liberados exitosamente" });
+    await prisma.transaction.create({
+      data: {
+        userId: user.id,
+        type: "P2P_TAKE",
+        asset: order.asset,
+        amount: order.amount,
+        description: `Orden ${id} tomada`,
+      },
+    });
+
+    reply.send({ success: true, order: updated });
   } catch (error) {
-    console.error("Error liberando orden:", error);
-    reply.code(500).send({ error: "Error interno" });
+    console.error("❌ Error en acceptOrder:", error);
+    reply.code(500).send({ error: "Error interno al aceptar orden" });
   }
 }
 
 /**
- * Historial de órdenes del usuario autenticado
+ * Liberar orden (completar operación y transferir fondos)
  */
-export async function myP2POrders(request: FastifyRequest, reply: FastifyReply) {
-  const user = (request as any).user;
-  const orders = await prisma.order.findMany({
-    where: { OR: [{ userId: user.id }, { takerId: user.id }] },
-    orderBy: { createdAt: "desc" },
-  });
-  reply.send({ success: true, orders });
+export async function releaseOrder(request: FastifyRequest, reply: FastifyReply) {
+  try {
+    const user = (request as any).user;
+    const id = Number((request.params as any).id);
+
+    const order = await prisma.order.findUnique({ where: { id } });
+    if (!order || order.status !== "TAKEN") {
+      return reply.code(400).send({ error: "Orden no disponible" });
+    }
+
+    // Transferencia de fondos bloqueados → comprador
+    const sellerBalance = await prisma.balance.findFirst({
+      where: { userId: order.userId, asset: order.asset },
+    });
+    const buyerBalance = await prisma.balance.findFirst({
+      where: { userId: order.takerId!, asset: order.asset },
+    });
+
+    if (!sellerBalance || !buyerBalance) {
+      return reply.code(400).send({ error: "Balances no encontrados" });
+    }
+
+    await prisma.$transaction([
+      prisma.balance.update({
+        where: { id: sellerBalance.id },
+        data: {
+          locked: sellerBalance.locked.minus(order.amount),
+        },
+      }),
+      prisma.balance.update({
+        where: { id: buyerBalance.id },
+        data: {
+          available: buyerBalance.available.plus(order.amount),
+        },
+      }),
+      prisma.order.update({
+        where: { id },
+        data: { status: "COMPLETED" },
+      }),
+      prisma.transaction.createMany({
+        data: [
+          {
+            userId: order.userId,
+            type: "P2P_RELEASE_SELLER",
+            asset: order.asset,
+            amount: order.amount,
+            description: `Venta completada - orden ${id}`,
+          },
+          {
+            userId: order.takerId!,
+            type: "P2P_RELEASE_BUYER",
+            asset: order.asset,
+            amount: order.amount,
+            description: `Compra completada - orden ${id}`,
+          },
+        ],
+      }),
+    ]);
+
+    reply.send({ success: true, message: "Orden completada y fondos liberados." });
+  } catch (error) {
+    console.error("❌ Error en releaseOrder:", error);
+    reply.code(500).send({ error: "Error interno al liberar orden" });
+  }
+}
+
+/**
+ * Ver historial de órdenes del usuario
+ */
+export async function myOrders(request: FastifyRequest, reply: FastifyReply) {
+  try {
+    const user = (request as any).user;
+
+    const orders = await prisma.order.findMany({
+      where: { OR: [{ userId: user.id }, { takerId: user.id }] },
+      orderBy: { createdAt: "desc" },
+    });
+
+    reply.send(orders);
+  } catch (error) {
+    console.error("❌ Error en myOrders:", error);
+    reply.code(500).send({ error: "Error al obtener historial de órdenes" });
+  }
 }
