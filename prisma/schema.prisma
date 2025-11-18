@@ -7,6 +7,9 @@ generator client {
   provider = "prisma-client-js"
 }
 
+//
+// ENUMS EXISTENTES
+//
 enum UserType {
   NATURAL
   MERCHANT
@@ -30,10 +33,24 @@ enum Asset {
   SMTX
 }
 
+//
+// NUEVO: ROLES PARA CONTROL DE ACCESO
+//
+enum Role {
+  USER
+  MERCHANT
+  SUPPORT
+  ADMIN
+  SUPERADMIN
+}
+
+//
+// MODELS
+//
 model User {
   id           Int            @id @default(autoincrement())
-  userId       String         @unique           // STX000001
-  nickname     String         @unique           // must start with '$'
+  userId       String         @unique
+  nickname     String         @unique
   email        String         @unique
   phone        String
   passwordHash String
@@ -43,10 +60,16 @@ model User {
   status       UserStatus     @default(ONLINE)
   createdAt    DateTime       @default(now())
 
+  // NEW: role system
+  role         Role           @default(USER)
+
   balances     Balance[]
   wallets      UserWallet[]
   orders       Order[]
   transactions Transaction[]
+
+  // relation con role-permission
+  rolePermissions RolePermission[]
 }
 
 model Balance {
@@ -70,32 +93,45 @@ model UserWallet {
 }
 
 model Order {
-  id        Int      @id @default(autoincrement())
+  id        Int       @id @default(autoincrement())
   userId    Int
   takerId   Int?
-  asset     Asset     // ✅ agregado
+  asset     Asset
   type      String
-  amount    Decimal    @db.Decimal(65, 30)
-  price     Decimal    @db.Decimal(65, 30)
-  status    String     @default("OPEN")
-  createdAt DateTime   @default(now())
-
-  user      User       @relation(fields: [userId], references: [id])
-  taker     User?      @relation("TakerOrders", fields: [takerId], references: [id])
+  amount    Decimal   @db.Decimal(65, 30)
+  price     Decimal   @db.Decimal(65, 30)
+  status    String    @default("OPEN")
+  createdAt DateTime  @default(now())
 }
 
-// ✅ Registro completo de todas las operaciones internas:
-// XPAY, bloqueos P2P, liberaciones, cancelaciones, etc.
 model Transaction {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  counterId   Int?
-  type        String   // XPAY_SEND | XPAY_RECEIVE | P2P_LOCK | P2P_RELEASE | P2P_CANCEL
-  asset       Asset
-  amount      Decimal   @db.Decimal(65, 30)
-  description String?   // ✅ agregado
-  status      String    @default("COMPLETED")
-  createdAt   DateTime  @default(now())
+  id        Int       @id @default(autoincrement())
+  userId    Int
+  asset     Asset
+  amount    Decimal   @db.Decimal(65, 30)
+  type      String
+  createdAt DateTime  @default(now())
+}
 
-  user        User      @relation(fields: [userId], references: [id])
+//
+// NUEVOS MODELOS PARA PERMISOS AVANZADOS
+//
+
+model Permission {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  createdAt DateTime @default(now())
+
+  rolePermissions RolePermission[]
+}
+
+model RolePermission {
+  id           Int        @id @default(autoincrement())
+  role         Role
+  permissionId Int
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  createdAt    DateTime   @default(now())
+
+  userId Int?           // opcional: útil si quieres permisos por usuario
+  user   User?          @relation(fields: [userId], references: [id])
 }
